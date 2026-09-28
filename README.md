@@ -12,13 +12,13 @@
 
 | 模块          | 说明                                                                    |
 | ----------- | --------------------------------------------------------------------- |
-| 请求调试        | Method / URL / Params / Headers / Body（json、raw、urlencoded、form-data；**支持文件字段**） |
+| 请求调试        | Method / URL / Params / Headers / Body（**none / form-data / urlencoded / raw(Text·JS·JSON·HTML·XML) / binary / GraphQL**；form-data 支持文件） |
 | 发送与响应       | Rust `reqwest` 出站，无浏览器 CORS；查看状态码、耗时、Headers、Body（JSON 可折叠）           |
 | 集合管理        | 集合树、新建 / 编辑 / 删除；支持**集合全局 URL 前缀**                                    |
 | 环境变量        | 多环境切换，URL / Header / Body 中使用 `{{var}}` 替换                            |
 | 工作区         | 多工作区隔离集合与环境                                                           |
 | 历史          | 发送历史列表，点击回放请求与响应                                                      |
-| 导入导出        | ApiTest JSON；Swagger 2 / OpenAPI 3（JSON 或 YAML）                       |
+| 导入导出        | ApiTest JSON；**Postman Collection v2.0 / v2.1**；Swagger 2 / OpenAPI 3（JSON 或 YAML）                       |
 | Pre / Tests | 前置脚本、断言脚本与 Test Results                                               |
 | Mock        | 按请求启用本地假响应（状态码 / Headers / Body / 延迟）                                 |
 | JMeter      | 集合导出为 `.jmx`（可配置线程数、循环、Ramp-up）                                       |
@@ -147,6 +147,7 @@ ApiTest/
 | 快捷键            | 作用   |
 | -------------- | ---- |
 | `Ctrl + Enter` | 发送请求 |
+| （发送中）点击 `Cancel` | 取消当前请求 |
 | `Ctrl + S`     | 保存请求 |
 | `Ctrl + N`     | 新建请求 |
 | `Ctrl + ,`     | 打开设置 |

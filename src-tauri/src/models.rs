@@ -66,6 +66,9 @@ pub struct RequestItem {
     pub headers: Vec<KeyValue>,
     pub body_type: String,
     pub body_content: String,
+    /// For body_type=raw: text | javascript | json | html | xml
+    #[serde(default)]
+    pub body_language: String,
     pub sort_order: i64,
     #[serde(default)]
     pub pre_script: String,
@@ -153,6 +156,8 @@ pub struct SaveRequestInput {
     pub headers: Vec<KeyValue>,
     pub body_type: String,
     pub body_content: String,
+    #[serde(default)]
+    pub body_language: String,
     pub collection_id: Option<i64>,
     #[serde(default)]
     pub pre_script: String,
@@ -191,6 +196,8 @@ pub struct SendRequestInput {
     pub body_type: String,
     #[serde(default)]
     pub body_content: String,
+    #[serde(default)]
+    pub body_language: String,
     pub request_id: Option<i64>,
     pub environment_id: Option<i64>,
 }
@@ -258,6 +265,8 @@ pub struct ExportRequest {
     pub headers: Vec<KeyValue>,
     pub body_type: String,
     pub body_content: String,
+    #[serde(default)]
+    pub body_language: String,
     #[serde(default)]
     pub pre_script: String,
     #[serde(default)]

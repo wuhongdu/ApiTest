@@ -5,8 +5,10 @@ mod jmeter;
 mod loadtest;
 mod models;
 mod openapi;
+mod postman;
 
 use db::DbState;
+use commands::SendCancelState;
 use tauri::Manager;
 
 #[cfg(test)]
@@ -26,6 +28,7 @@ pub fn run() {
             let db_path = app_data.join("apitest.db");
             let conn = db::open_and_migrate(&db_path).expect("failed to open sqlite database");
             app.manage(DbState::new(conn, db_path));
+            app.manage(SendCancelState::new());
 
             // Ensure taskbar / Alt-Tab use the app icon (esp. with decorations: false).
             if let Some(window) = app.get_webview_window("main") {
@@ -55,6 +58,7 @@ pub fn run() {
             commands::delete_env_var,
             commands::create_environment,
             commands::send_request,
+            commands::cancel_request,
             commands::preview_substituted,
             commands::list_history,
             commands::get_history,

@@ -10,8 +10,18 @@ fn parse_kv(json: &str) -> Vec<KeyValue> {
 fn map_request(row: &rusqlite::Row<'_>) -> rusqlite::Result<RequestItem> {
     let params_json: String = row.get(5)?;
     let headers_json: String = row.get(6)?;
-    let mock_headers_json: String = row.get(14)?;
-    let mock_enabled: i64 = row.get(12)?;
+    let mut body_type: String = row.get(7)?;
+    let body_content: String = row.get(8)?;
+    let mut body_language: String = row.get(9).unwrap_or_default();
+    // Legacy: body_type=json → raw + json
+    if body_type == "json" {
+        body_type = "raw".into();
+        if body_language.trim().is_empty() {
+            body_language = "json".into();
+        }
+    }
+    let mock_headers_json: String = row.get(15)?;
+    let mock_enabled: i64 = row.get(13)?;
     Ok(RequestItem {
         id: row.get(0)?,
         collection_id: row.get(1)?,
@@ -20,22 +30,23 @@ fn map_request(row: &rusqlite::Row<'_>) -> rusqlite::Result<RequestItem> {
         url: row.get(4)?,
         params: parse_kv(&params_json),
         headers: parse_kv(&headers_json),
-        body_type: row.get(7)?,
-        body_content: row.get(8)?,
-        sort_order: row.get(9)?,
-        pre_script: row.get(10)?,
-        test_script: row.get(11)?,
+        body_type,
+        body_content,
+        body_language,
+        sort_order: row.get(10)?,
+        pre_script: row.get(11)?,
+        test_script: row.get(12)?,
         mock_enabled: mock_enabled == 1,
-        mock_status: row.get(13)?,
+        mock_status: row.get(14)?,
         mock_headers: parse_kv(&mock_headers_json),
-        mock_body: row.get(15)?,
-        mock_delay_ms: row.get(16)?,
+        mock_body: row.get(16)?,
+        mock_delay_ms: row.get(17)?,
     })
 }
 
 const REQUEST_SELECT: &str = "SELECT id, collection_id, name, method, url, params_json, headers_json,
-        body_type, body_content, sort_order, pre_script, test_script, mock_enabled, mock_status,
-        mock_headers_json, mock_body, mock_delay_ms
+        body_type, body_content, COALESCE(body_language, ''), sort_order, pre_script, test_script,
+        mock_enabled, mock_status, mock_headers_json, mock_body, mock_delay_ms
  FROM requests";
 
 #[tauri::command]
@@ -93,6 +104,15 @@ pub fn save_request(state: State<'_, DbState>, input: SaveRequestInput) -> Resul
         serde_json::to_string(&input.mock_headers).map_err(|e| e.to_string())?;
     let mock_enabled = if input.mock_enabled { 1 } else { 0 };
 
+    let mut body_type = input.body_type;
+    let mut body_language = input.body_language;
+    if body_type == "json" {
+        body_type = "raw".into();
+        if body_language.trim().is_empty() {
+            body_language = "json".into();
+        }
+    }
+
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     let n = conn
         .execute(
@@ -105,15 +125,16 @@ pub fn save_request(state: State<'_, DbState>, input: SaveRequestInput) -> Resul
                 headers_json = ?6,
                 body_type = ?7,
                 body_content = ?8,
-                pre_script = ?9,
-                test_script = ?10,
-                mock_enabled = ?11,
-                mock_status = ?12,
-                mock_headers_json = ?13,
-                mock_body = ?14,
-                mock_delay_ms = ?15,
+                body_language = ?9,
+                pre_script = ?10,
+                test_script = ?11,
+                mock_enabled = ?12,
+                mock_status = ?13,
+                mock_headers_json = ?14,
+                mock_body = ?15,
+                mock_delay_ms = ?16,
                 updated_at = datetime('now')
-             WHERE id = ?16",
+             WHERE id = ?17",
             params![
                 input.collection_id,
                 name,
@@ -121,8 +142,9 @@ pub fn save_request(state: State<'_, DbState>, input: SaveRequestInput) -> Resul
                 input.url,
                 params_json,
                 headers_json,
-                input.body_type,
+                body_type,
                 input.body_content,
+                body_language,
                 input.pre_script,
                 input.test_script,
                 mock_enabled,

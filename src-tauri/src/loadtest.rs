@@ -20,6 +20,8 @@ pub struct LoadTestInput {
     pub body_type: String,
     #[serde(default)]
     pub body_content: String,
+    #[serde(default)]
+    pub body_language: String,
     /// Concurrent virtual users
     #[serde(default = "default_threads")]
     pub threads: u32,
@@ -99,6 +101,7 @@ pub fn run_load_test(input: LoadTestInput) -> Result<LoadTestResult, String> {
         headers: input.headers.clone(),
         body_type: input.body_type.clone(),
         body_content: input.body_content.clone(),
+        body_language: input.body_language.clone(),
         request_id: None,
         environment_id: None,
     };
@@ -208,6 +211,7 @@ mod tests {
             headers: vec![],
             body_type: "none".into(),
             body_content: String::new(),
+            body_language: String::new(),
             threads: 100,
             loops: 200,
             ramp_up_secs: 0.0,

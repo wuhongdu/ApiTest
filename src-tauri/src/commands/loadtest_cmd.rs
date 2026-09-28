@@ -19,6 +19,8 @@ pub struct RunLoadTestInput {
     pub body_type: String,
     #[serde(default)]
     pub body_content: String,
+    #[serde(default)]
+    pub body_language: String,
     /// When set, apply that request's collection base_url to relative URLs.
     pub request_id: Option<i64>,
     pub environment_id: Option<i64>,
@@ -113,6 +115,7 @@ pub fn run_load_test_cmd(
         headers: input.headers,
         body_type: input.body_type,
         body_content: input.body_content,
+        body_language: input.body_language,
         threads: input.threads,
         loops: input.loops,
         ramp_up_secs: input.ramp_up_secs,

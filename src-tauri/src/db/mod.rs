@@ -77,6 +77,12 @@ fn run_phase3_migrate(conn: &Connection) -> Result<(), String> {
         "base_url",
         "base_url TEXT NOT NULL DEFAULT ''",
     )?;
+    add_column_if_missing(
+        conn,
+        "requests",
+        "body_language",
+        "body_language TEXT NOT NULL DEFAULT ''",
+    )?;
 
     // ensure all existing rows belong to default workspace
     let _ = conn.execute(
@@ -87,9 +93,15 @@ fn run_phase3_migrate(conn: &Connection) -> Result<(), String> {
         "UPDATE environments SET workspace_id = 1 WHERE workspace_id IS NULL OR workspace_id = 0",
         [],
     );
+    // Normalize legacy body_type=json → raw + language=json
+    let _ = conn.execute(
+        "UPDATE requests SET body_type = 'raw', body_language = 'json'
+         WHERE body_type = 'json' AND (body_language IS NULL OR body_language = '')",
+        [],
+    );
 
     conn.execute(
-        "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '4')",
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '5')",
         [],
     )
     .map_err(|e| e.to_string())?;

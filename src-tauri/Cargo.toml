@@ -1,6 +1,6 @@
 [package]
 name = "apitest"
-version = "0.1.0"
+version = "0.2.0"
 description = "ApiTest - desktop API debugger"
 authors = ["ApiTest"]
 edition = "2021"
@@ -23,6 +23,7 @@ thiserror = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking", "multipart"] }
 url = "2"
 serde_yaml = "0.9"
+tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }
 
 [profile.release]
 panic = "abort"

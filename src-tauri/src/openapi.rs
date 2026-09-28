@@ -320,6 +320,7 @@ fn empty_request(name: String, method: String, url: String) -> ExportRequest {
         headers: vec![],
         body_type: "none".into(),
         body_content: String::new(),
+        body_language: String::new(),
         pre_script: String::new(),
         test_script: String::new(),
         mock_enabled: false,
@@ -421,7 +422,12 @@ pub fn openapi_to_collection(doc: &Value) -> Result<ExportCollection, String> {
             );
             req.params = query;
             req.headers = headers;
-            req.body_type = body_type;
+            if body_type == "json" {
+                req.body_type = "raw".into();
+                req.body_language = "json".into();
+            } else {
+                req.body_type = body_type;
+            }
             req.body_content = body_content;
             requests.push(req);
         }
@@ -493,7 +499,8 @@ mod tests {
             .find(|r| r.name == "Create user")
             .unwrap();
         assert_eq!(create.method, "POST");
-        assert_eq!(create.body_type, "json");
+        assert_eq!(create.body_type, "raw");
+        assert_eq!(create.body_language, "json");
         assert!(create.body_content.contains("Ada") || create.body_content.contains("name"));
     }
 

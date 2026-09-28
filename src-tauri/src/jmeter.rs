@@ -390,6 +390,7 @@ mod tests {
                 headers: vec![KeyValue::text("Accept", "application/json")],
                 body_type: "none".into(),
                 body_content: String::new(),
+                body_language: String::new(),
                 pre_script: String::new(),
                 test_script: String::new(),
                 mock_enabled: false,

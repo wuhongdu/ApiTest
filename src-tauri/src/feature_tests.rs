@@ -35,7 +35,7 @@ fn migrate_and_seed_ok() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(version, "4");
+    assert_eq!(version, "5");
 
     let col_count: i64 = conn
         .query_row("SELECT COUNT(*) FROM collections", [], |r| r.get(0))
@@ -398,6 +398,7 @@ fn http_get_httpbin_ip() {
         headers: vec![],
         body_type: "none".into(),
         body_content: String::new(),
+        body_language: String::new(),
         request_id: None,
         environment_id: None,
     };
@@ -427,6 +428,7 @@ fn http_get_with_env_substitution() {
         headers: vec![KeyValue::text("X-ApiTest", "1")],
         body_type: "none".into(),
         body_content: String::new(),
+        body_language: String::new(),
         request_id: None,
         environment_id: None,
     };
@@ -449,6 +451,7 @@ fn http_post_json() {
         headers: vec![],
         body_type: "json".into(),
         body_content: r#"{"hello":"apitest"}"#.into(),
+        body_language: String::new(),
         request_id: None,
         environment_id: None,
     };
@@ -502,6 +505,7 @@ fn form_data_file_field_reads_path() {
         headers: vec![],
         body_type: "form-data".into(),
         body_content: body,
+        body_language: String::new(),
         request_id: None,
         environment_id: None,
     };

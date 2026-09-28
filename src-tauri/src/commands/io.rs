@@ -3,6 +3,7 @@ use crate::models::{
     Collection, ExportCollection, ExportRequest, ImportCollectionInput, KeyValue,
 };
 use crate::openapi::{looks_like_openapi, openapi_to_collection, parse_import_json};
+use crate::postman::{looks_like_postman, postman_to_collection};
 use rusqlite::params;
 use tauri::State;
 
@@ -29,9 +30,14 @@ fn resolve_import_payload(raw: &str) -> Result<ExportCollection, String> {
     if looks_like_openapi(&value) {
         return openapi_to_collection(&value);
     }
+    if looks_like_postman(&value) {
+        return postman_to_collection(&value);
+    }
 
     let data: ExportCollection = serde_json::from_value(value).map_err(|e| {
-        format!("无法识别导入内容（支持 ApiTest JSON / Swagger 2 / OpenAPI 3）: {e}")
+        format!(
+            "无法识别导入内容（支持 ApiTest JSON / Postman Collection / Swagger 2 / OpenAPI 3）: {e}"
+        )
     })?;
 
     if !data.format.is_empty() && data.format != "apitest-collection" {
@@ -78,17 +84,26 @@ fn insert_collection(
         };
         let body_type = if req.body_type.trim().is_empty() {
             "none".into()
+        } else if req.body_type == "json" {
+            "raw".into()
         } else {
             req.body_type.clone()
+        };
+        let body_language = if !req.body_language.trim().is_empty() {
+            req.body_language.clone()
+        } else if req.body_type == "json" || body_type == "raw" {
+            "json".into()
+        } else {
+            String::new()
         };
         let mock_enabled = if req.mock_enabled { 1 } else { 0 };
 
         conn.execute(
             "INSERT INTO requests
              (collection_id, name, method, url, params_json, headers_json, body_type, body_content,
-              sort_order, pre_script, test_script, mock_enabled, mock_status, mock_headers_json,
-              mock_body, mock_delay_ms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+              body_language, sort_order, pre_script, test_script, mock_enabled, mock_status,
+              mock_headers_json, mock_body, mock_delay_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             params![
                 collection_id,
                 req_name,
@@ -98,6 +113,7 @@ fn insert_collection(
                 headers_json,
                 body_type,
                 req.body_content,
+                body_language,
                 idx as i64,
                 req.pre_script,
                 req.test_script,
@@ -146,8 +162,8 @@ pub fn export_collection(
     let mut stmt = conn
         .prepare(
             "SELECT name, method, url, params_json, headers_json, body_type, body_content,
-                    pre_script, test_script, mock_enabled, mock_status, mock_headers_json,
-                    mock_body, mock_delay_ms
+                    COALESCE(body_language, ''), pre_script, test_script, mock_enabled, mock_status,
+                    mock_headers_json, mock_body, mock_delay_ms
              FROM requests WHERE collection_id = ?1 ORDER BY sort_order, id",
         )
         .map_err(|e| e.to_string())?;
@@ -156,23 +172,33 @@ pub fn export_collection(
         .query_map(params![collection_id], |row| {
             let params_json: String = row.get(3)?;
             let headers_json: String = row.get(4)?;
-            let mock_headers_json: String = row.get(11)?;
-            let mock_enabled: i64 = row.get(9)?;
+            let mut body_type: String = row.get(5)?;
+            let body_content: String = row.get(6)?;
+            let mut body_language: String = row.get(7)?;
+            if body_type == "json" {
+                body_type = "raw".into();
+                if body_language.trim().is_empty() {
+                    body_language = "json".into();
+                }
+            }
+            let mock_headers_json: String = row.get(12)?;
+            let mock_enabled: i64 = row.get(10)?;
             Ok(ExportRequest {
                 name: row.get(0)?,
                 method: row.get(1)?,
                 url: row.get(2)?,
                 params: parse_kv(&params_json),
                 headers: parse_kv(&headers_json),
-                body_type: row.get(5)?,
-                body_content: row.get(6)?,
-                pre_script: row.get(7)?,
-                test_script: row.get(8)?,
+                body_type,
+                body_content,
+                body_language,
+                pre_script: row.get(8)?,
+                test_script: row.get(9)?,
                 mock_enabled: mock_enabled == 1,
-                mock_status: row.get(10)?,
+                mock_status: row.get(11)?,
                 mock_headers: parse_kv(&mock_headers_json),
-                mock_body: row.get(12)?,
-                mock_delay_ms: row.get(13)?,
+                mock_body: row.get(13)?,
+                mock_delay_ms: row.get(14)?,
             })
         })
         .map_err(|e| e.to_string())?
