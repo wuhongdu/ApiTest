@@ -9,7 +9,14 @@
       <span v-else class="toggle placeholder" />
       <span v-if="name !== null && name !== undefined && depth > 0" class="key">{{ displayName }}: </span>
       <span v-if="!expandable" :class="valueClass">{{ displayValue }}</span>
-      <span v-else class="preview" @click="expanded = !expanded">{{ preview }}</span>
+      <button
+        v-if="canSetToken"
+        type="button"
+        class="token-btn"
+        title="抓取为 Token 并应用到集合"
+        @click.stop="emitSetToken"
+      >Token</button>
+      <span v-else-if="expandable" class="preview" @click="expanded = !expanded">{{ preview }}</span>
     </div>
     <div v-if="expandable && expanded">
       <json-node
@@ -19,6 +26,7 @@
         :value="child.value"
         :depth="depth + 1"
         :default-expand-depth="defaultExpandDepth"
+        @set-token="$emit('set-token', $event)"
       />
     </div>
   </div>
@@ -81,6 +89,17 @@ export default {
         return Object.keys(this.value).map(k => ({ name: k, value: this.value[k] }))
       }
       return []
+    },
+    canSetToken() {
+      return this.type === 'string' && String(this.value || '').trim().length >= 4
+    }
+  },
+  methods: {
+    emitSetToken() {
+      this.$emit('set-token', {
+        value: String(this.value),
+        key: typeof this.name === 'string' ? this.name : ''
+      })
     }
   }
 }
@@ -129,5 +148,32 @@ export default {
 
 .val-null {
   color: #fb7185;
+}
+
+.token-btn {
+  margin-left: 6px;
+  border: 1px solid #475569;
+  background: #334155;
+  color: #fbbf24;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 5px;
+  height: 16px;
+  line-height: 14px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  opacity: 0.55;
+  flex-shrink: 0;
+
+  .line:hover & {
+    opacity: 1;
+  }
+
+  &:hover {
+    background: #475569;
+    border-color: #fbbf24;
+    color: #fde68a;
+  }
 }
 </style>

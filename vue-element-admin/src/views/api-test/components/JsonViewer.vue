@@ -54,6 +54,7 @@
         :name="rootName"
         :depth="0"
         :default-expand-depth="expandDepth"
+        @set-token="$emit('set-token', $event)"
       />
     </div>
   </div>

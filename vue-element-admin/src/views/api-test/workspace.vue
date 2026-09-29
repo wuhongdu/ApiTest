@@ -162,9 +162,9 @@
       </div>
     </header>
 
-    <div class="main-panes">
+    <div class="main-panes" :class="{ 'is-sidebar-resizing': sidebarResizing }">
       <!-- Left rail -->
-      <aside class="pane-left">
+      <aside class="pane-left" :style="paneLeftStyle">
         <div class="left-seg">
           <button
             class="seg-btn"
@@ -272,6 +272,13 @@
           </div>
         </template>
       </aside>
+
+      <div
+        class="sidebar-resizer"
+        title="拖动调整侧栏宽度 · 双击复位"
+        @mousedown="onSidebarMouseDown"
+        @dblclick="resetSidebarWidth"
+      />
 
       <!-- Main editor -->
       <section class="pane-right">
@@ -563,6 +570,13 @@
                   <span class="meta-spacer" />
                   <button
                     type="button"
+                    class="meta-action-btn"
+                    title="从响应体抓取 Token，写入环境变量并应用到当前集合其他接口"
+                    :disabled="!response.body"
+                    @click="openTokenCapture()"
+                  >抓取 Token</button>
+                  <button
+                    type="button"
                     class="meta-icon-btn"
                     title="复制响应体"
                     :disabled="!response.body"
@@ -604,7 +618,7 @@
 
               <el-tabs v-else-if="response" v-model="respTab" class="resp-tabs">
                 <el-tab-pane label="Body" name="body">
-                  <json-viewer :text="response.body || ''" />
+                  <json-viewer :text="response.body || ''" @set-token="onJsonSetToken" />
                 </el-tab-pane>
                 <el-tab-pane :label="headersTabLabel" name="headers">
                   <div v-if="!(response.headers && response.headers.length)" class="response-empty compact">
@@ -781,6 +795,65 @@
       </span>
     </el-dialog>
 
+    <el-dialog
+      title="抓取 Token"
+      :visible.sync="tokenDialogVisible"
+      width="520px"
+      custom-class="apitest-dlg"
+    >
+      <el-form label-position="top" size="small" @submit.native.prevent>
+        <el-form-item v-if="tokenCandidates.length > 1" label="候选字段">
+          <el-select
+            v-model="tokenForm.selectedPath"
+            style="width: 100%"
+            filterable
+            @change="onTokenCandidateChange"
+          >
+            <el-option
+              v-for="c in tokenCandidates"
+              :key="c.path"
+              :label="c.path"
+              :value="c.path"
+            >
+              <span>{{ c.path }}</span>
+              <span style="float: right; color: #909399; font-size: 12px; max-width: 180px; overflow: hidden; text-overflow: ellipsis">
+                {{ previewToken(c.value) }}
+              </span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Token 值" required>
+          <el-input
+            v-model="tokenForm.value"
+            type="textarea"
+            :rows="3"
+            placeholder="粘贴或从响应中选择 token"
+          />
+        </el-form-item>
+        <el-form-item label="环境变量名">
+          <el-input v-model="tokenForm.envKey" placeholder="token" />
+          <div class="env-hint" style="margin-top: 6px">
+            将写入当前环境，其他请求使用
+            <code>{{ tokenHeaderExample }}</code>
+          </div>
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="tokenForm.applyCollection">
+            应用到当前集合其他接口的 Authorization 头
+          </el-checkbox>
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="tokenForm.applyCurrent">
+            同时写入当前请求
+          </el-checkbox>
+        </el-form-item>
+      </el-form>
+      <span slot="footer">
+        <el-button @click="tokenDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="tokenApplying" @click="confirmTokenCapture">应用</el-button>
+      </span>
+    </el-dialog>
+
     <el-dialog title="导入集合" :visible.sync="importDialogVisible" width="720px" custom-class="apitest-dlg">
       <div class="env-hint">
         支持粘贴：
@@ -892,6 +965,12 @@ import JsonViewer from './components/JsonViewer'
 import AtIcon from './components/AtIcon'
 import { isTauriRuntime, windowMinimize, windowToggleMaximize, windowClose, windowIsMaximized, windowStartDragging } from '@/utils/tauri'
 import { runPreScript, runTestScript } from '@/utils/scriptRunner'
+import {
+  findTokenCandidates,
+  parseResponseJson,
+  upsertAuthHeader,
+  collectRequestIds
+} from '@/utils/tokenCapture'
 import * as api from '@/api/apitest'
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
@@ -1085,6 +1164,11 @@ const SPLIT_DEFAULT = 42
 const SPLIT_MIN = 18
 const SPLIT_MAX = 78
 
+const SIDEBAR_STORAGE_KEY = 'apitest-sidebar-width'
+const SIDEBAR_DEFAULT = 268
+const SIDEBAR_MIN = 180
+const SIDEBAR_MAX = 560
+
 function loadSplitPercent() {
   try {
     const n = Number(localStorage.getItem(SPLIT_STORAGE_KEY))
@@ -1096,6 +1180,20 @@ function loadSplitPercent() {
 function saveSplitPercent(n) {
   try {
     localStorage.setItem(SPLIT_STORAGE_KEY, String(Math.round(n)))
+  } catch (e) { /* ignore */ }
+}
+
+function loadSidebarWidth() {
+  try {
+    const n = Number(localStorage.getItem(SIDEBAR_STORAGE_KEY))
+    if (Number.isFinite(n) && n >= SIDEBAR_MIN && n <= SIDEBAR_MAX) return n
+  } catch (e) { /* ignore */ }
+  return SIDEBAR_DEFAULT
+}
+
+function saveSidebarWidth(n) {
+  try {
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, String(Math.round(n)))
   } catch (e) { /* ignore */ }
 }
 
@@ -1128,10 +1226,22 @@ export default {
       saving: false,
       splitPercent: loadSplitPercent(),
       splitting: false,
+      sidebarWidth: loadSidebarWidth(),
+      sidebarResizing: false,
       envDialogVisible: false,
       envVarRows: emptyKv(),
       savingEnv: false,
       originalEnvVars: [],
+      tokenDialogVisible: false,
+      tokenApplying: false,
+      tokenCandidates: [],
+      tokenForm: {
+        value: '',
+        envKey: 'token',
+        selectedPath: '',
+        applyCollection: true,
+        applyCurrent: false
+      },
       importDialogVisible: false,
       importJson: '',
       importing: false,
@@ -1288,6 +1398,10 @@ export default {
       const n = this.response && this.response.headers ? this.response.headers.length : 0
       return n ? `Headers (${n})` : 'Headers'
     },
+    tokenHeaderExample() {
+      const key = (this.tokenForm && this.tokenForm.envKey) || 'token'
+      return `Authorization: Bearer {{${key}}}`
+    },
     responseBodyBytes() {
       if (!this.response || !this.response.body) return 0
       try {
@@ -1310,6 +1424,12 @@ export default {
         height: this.splitPercent + '%',
         flex: 'none',
         maxHeight: 'none'
+      }
+    },
+    paneLeftStyle() {
+      return {
+        width: this.sidebarWidth + 'px',
+        flex: 'none'
       }
     },
     importPlaceholder() {
@@ -1659,6 +1779,36 @@ export default {
       document.addEventListener('mousemove', onMove)
       document.addEventListener('mouseup', onUp)
     },
+    clampSidebarWidth(n) {
+      return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, n))
+    },
+    resetSidebarWidth() {
+      this.sidebarWidth = SIDEBAR_DEFAULT
+      saveSidebarWidth(this.sidebarWidth)
+    },
+    onSidebarMouseDown(e) {
+      if (e.button !== 0) return
+      e.preventDefault()
+      this.sidebarResizing = true
+      const startX = e.clientX
+      const startW = this.sidebarWidth
+      const onMove = (ev) => {
+        const next = startW + (ev.clientX - startX)
+        this.sidebarWidth = this.clampSidebarWidth(next)
+      }
+      const onUp = () => {
+        this.sidebarResizing = false
+        document.removeEventListener('mousemove', onMove)
+        document.removeEventListener('mouseup', onUp)
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+        saveSidebarWidth(this.sidebarWidth)
+      }
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+      document.addEventListener('mousemove', onMove)
+      document.addEventListener('mouseup', onUp)
+    },
     async loadTree() {
       this.treeData = await api.getSidebarTree()
     },
@@ -1892,6 +2042,126 @@ export default {
         }
       }
       await this.loadEnvVars()
+    },
+    previewToken(value) {
+      const s = String(value || '')
+      if (s.length <= 24) return s
+      return s.slice(0, 10) + '…' + s.slice(-8)
+    },
+    onJsonSetToken(payload) {
+      const value = payload && payload.value != null ? String(payload.value) : ''
+      this.openTokenCapture(value)
+    },
+    openTokenCapture(presetValue) {
+      if (!this.response || !this.response.body) {
+        this.$message.warning('暂无响应体')
+        return
+      }
+      const json = parseResponseJson(this.response.body)
+      const candidates = json ? findTokenCandidates(json) : []
+      this.tokenCandidates = candidates
+      let value = presetValue != null ? String(presetValue) : ''
+      let selectedPath = ''
+      if (!value && candidates.length) {
+        value = candidates[0].value
+        selectedPath = candidates[0].path
+      }
+      this.tokenForm = {
+        value,
+        envKey: 'token',
+        selectedPath,
+        applyCollection: true,
+        applyCurrent: false
+      }
+      if (!value) {
+        this.$message.info('未自动识别到 token 字段，请手动粘贴')
+      }
+      this.tokenDialogVisible = true
+    },
+    onTokenCandidateChange(path) {
+      const hit = (this.tokenCandidates || []).find(c => c.path === path)
+      if (hit) this.tokenForm.value = hit.value
+    },
+    requestToSavePayload(req, headers) {
+      const normalized = normalizeBodyFields({ ...req })
+      return {
+        id: normalized.id,
+        name: normalized.name,
+        method: normalized.method,
+        url: normalized.url,
+        params: normalized.params && normalized.params.length ? normalized.params : emptyKv(),
+        headers: headers || (normalized.headers && normalized.headers.length ? normalized.headers : emptyKv()),
+        body_type: normalized.body_type || 'none',
+        body_content: normalized.body_content || '',
+        body_language: normalized.body_language || '',
+        collection_id: normalized.collection_id,
+        pre_script: normalized.pre_script || '',
+        test_script: normalized.test_script || '',
+        mock_enabled: !!normalized.mock_enabled,
+        mock_status: normalized.mock_status || 200,
+        mock_headers: normalized.mock_headers && normalized.mock_headers.length ? normalized.mock_headers : emptyKv(),
+        mock_body: normalized.mock_body || '',
+        mock_delay_ms: normalized.mock_delay_ms || 0
+      }
+    },
+    async confirmTokenCapture() {
+      const token = String(this.tokenForm.value || '').trim()
+      if (!token) {
+        this.$message.warning('Token 不能为空')
+        return
+      }
+      const envKey = String(this.tokenForm.envKey || 'token').trim() || 'token'
+      if (!this.activeEnvId) {
+        this.$message.warning('请先选择或创建一个环境')
+        return
+      }
+      const collectionId = this.currentRequest && this.currentRequest.collection_id
+        ? this.currentRequest.collection_id
+        : this.selectedCollectionId
+      if (this.tokenForm.applyCollection && !collectionId) {
+        this.$message.warning('当前请求未归属集合，无法批量应用')
+        return
+      }
+
+      this.tokenApplying = true
+      try {
+        await this.applyEnvUpdates({ [envKey]: token })
+        const headerValue = `Bearer {{${envKey}}}`
+        let applied = 0
+
+        if (this.tokenForm.applyCollection && collectionId) {
+          const excludeId = this.tokenForm.applyCurrent
+            ? null
+            : (this.currentRequest && this.currentRequest.id)
+          const ids = collectRequestIds(this.treeData, collectionId, excludeId)
+          for (const id of ids) {
+            const req = await api.getRequest(id)
+            const headers = upsertAuthHeader(req.headers || [], headerValue)
+            await api.saveRequest(this.requestToSavePayload(req, headers))
+            applied += 1
+          }
+        }
+
+        if (this.tokenForm.applyCurrent && this.currentRequest) {
+          this.currentRequest.headers = upsertAuthHeader(
+            this.currentRequest.headers || [],
+            headerValue
+          )
+          if (this.currentRequest.id) {
+            await api.saveRequest(this.buildSavePayload())
+            applied += 1
+          }
+        }
+
+        this.tokenDialogVisible = false
+        const parts = [`已写入环境变量 ${envKey}`]
+        if (applied) parts.push(`已更新 ${applied} 个接口 Authorization`)
+        this.$message.success(parts.join(' · '))
+      } catch (e) {
+        this.$message.error(this.errMsg(e))
+      } finally {
+        this.tokenApplying = false
+      }
     },
     buildEnvMap() {
       const map = {}
@@ -2747,6 +3017,10 @@ $panel: #ffffff;
   flex: 1;
   min-height: 0;
   display: flex;
+  &.is-sidebar-resizing {
+    cursor: col-resize;
+    user-select: none;
+  }
 }
 
 /* ===== Left sidebar (light by default) ===== */
@@ -2758,7 +3032,37 @@ $panel: #ffffff;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid #e5e7eb;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sidebar-resizer {
+  flex-shrink: 0;
+  width: 5px;
+  margin: 0;
+  cursor: col-resize;
+  position: relative;
+  background: transparent;
+  z-index: 3;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 2px;
+    width: 1px;
+    background: $border;
+  }
+
+  &:hover,
+  &:active {
+    &::before {
+      background: $orange;
+      width: 2px;
+      left: 1px;
+    }
+  }
 }
 
 .pane-left .icon-btn {
@@ -3507,6 +3811,33 @@ $panel: #ffffff;
 
 .meta-spacer { flex: 1; min-width: 8px; }
 
+.meta-action-btn {
+  border: 1px solid $border;
+  background: #fff;
+  color: #6b7280;
+  height: 26px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0 10px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+
+  &:hover:not(:disabled) {
+    color: $orange;
+    border-color: rgba(255, 108, 55, 0.45);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
 .meta-icon-btn {
   border: 1px solid $border;
   background: #fff;
@@ -3801,7 +4132,12 @@ $panel: #ffffff;
   .pane-left {
     background: $sidebar;
     color: $sidebar-text;
-    border-right-color: #111;
+  }
+
+  .sidebar-resizer {
+    &::before { background: #2a2e38; }
+    &:hover::before,
+    &:active::before { background: $orange; }
   }
 
   .pane-left .icon-btn {
@@ -3878,6 +4214,15 @@ $panel: #ffffff;
     background: #1c212b;
     border-color: #2a2e38;
     color: #9ca3af;
+  }
+  .meta-action-btn {
+    background: #1c212b;
+    border-color: #2a2e38;
+    color: #9ca3af;
+    &:hover:not(:disabled) {
+      color: #ff8f66;
+      border-color: rgba(255, 108, 55, 0.45);
+    }
   }
   .meta-icon-btn {
     background: #1c212b;

@@ -166,13 +166,13 @@ npm run tauri:build
 成功后产物通常在 cargo target 目录下：
 
 - 可执行文件：`…/release/apitest.exe`
-- NSIS 安装包：`…/release/bundle/nsis/ApiTest_0.1.0_x64-setup.exe`
+- NSIS 安装包：`…/release/bundle/nsis/ApiTest_0.2.0_x64-setup.exe`
 
 仓库内整理后的发布目录：
 
 ```
 release/
-├── ApiTest_0.1.0_x64-setup.exe   # 安装包（推荐）
+├── ApiTest_0.2.0_x64-setup.exe   # 安装包（推荐）
 ├── ApiTest.exe                   # 便携版
 └── README.md
 ```
@@ -229,4 +229,4 @@ npm test
 
 ## 版本
 
-当前版本：**0.1.0**
+当前版本：**0.2.0**
